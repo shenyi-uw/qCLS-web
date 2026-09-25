@@ -168,3 +168,63 @@ as Random when restored.
 This is per browser and per machine, not a record system. It protects against a
 lost reload, not a lost laptop. The CSV downloads remain the way results leave
 the application.
+
+## 10. Headless Simulation and Evaluation
+The `sim/qcls_wasm_accuracy_sim.py` harness evaluates the compiled qCLS
+WebAssembly implementation against simulated virtual listeners. It uses the
+same C tracker and post-hoc PCA fitter as the webapp, while
+`sim/wasm_runner.py` mirrors the session and adaptive-stimulus logic and
+`sim/wasm_bridge.js` calls the Emscripten exports under Node.js.
+
+Virtual-listener parameters and ground-truth CU 5 through CU 50 profiles are
+stored in `sim/mcpf_parameters.csv`. `sim/mcpf_simulator.py` uses the MCPF
+coefficients and false-alarm rates to draw categorical responses at each
+presented frequency and level. The Python runner converts categories
+0 through 10 to the webapp's response scale, 0 through 50 CU, before updating
+the C tracker. The CSV profiles are the reference truth used for accuracy
+metrics; response probabilities come from the MCPF parameters.
+
+Requirements are Python with NumPy and pandas, Node.js, and the built
+`qcls_core.js` / `qcls_core.wasm` files in the repository root. From the
+repository root, run one mode with:
+
+```bash
+python sim/qcls_wasm_accuracy_sim.py --impl wasm --mode bayesian \
+  --n_trials 60 --n_reps 20 --out_dir ./wasm_accuracy_results
+```
+
+Use `--mode random`, `--mode bayesian`, or `--mode isophon` to select the
+webapp's Phase 2 mode. `--ground_truth_csv` can select another compatible
+parameter/profile CSV. `--sweep_trials 20 40 60` runs cumulative sessions and
+reports accuracy at those trial counts instead of only at the final count.
+`--plot_repetitions` optionally displays fitted profiles as the simulation
+runs. `--impl dummy` is only a harness/plumbing check; it is not an evaluation
+of the qCLS webapp procedure.
+
+The harness writes per-repetition MAE accuracy, pairwise repeat-session MAD
+reliability, signed bias by listener/boundary/frequency, and a summary JSON
+file. A convergence sweep writes its own table of mean, standard deviation,
+and median MAE by trial count. These describe the procedure's numerical
+contour recovery and repeatability for the supplied virtual-listener model;
+they are not results from human participants.
+
+### Evaluation Scope
+The headless evaluation covers the numerical path from simulated categorical
+responses through the live C tracker and post-hoc PCA fit, including the
+webapp's default Phase 1 range-bounding rules, output-ceiling/backoff rules,
+and all three Phase 2 selection modes. It does not exercise or assess:
+
+- Web Audio stimulus generation, waveform bandwidth/type, SPL calibration,
+  panning, hardware output, transducer response, or real listener perception.
+- The browser UI, buttons, progress display, contour rendering, audiogram
+  display, downloads, local session storage, or browser/device compatibility.
+- Audiogram-conditioned priors. The headless runner uses the stock C prior;
+  the browser's optional threshold entry, dB HL/SPL conversion, and transducer
+  selection are not currently passed through the simulation protocol.
+- Alternative UI settings for starting frequency, starting level, or maximum
+  output. The headless runner uses the webapp defaults: 1 kHz, 50 dB SPL,
+  100 dB SPL ceiling, and the 110 dB equipment maximum.
+- Exact seeded equivalence with browser randomness. Random-mode selection uses
+  Python's seeded RNG, while Bayesian/isoPhon selection uses C `rand()`; the
+  session seed is not currently forwarded to the C RNG. None of these streams
+  matches the browser's JavaScript `Math.random()` sequence.
